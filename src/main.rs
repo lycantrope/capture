@@ -20,7 +20,7 @@ const HEIGHT: u32 = 768;
 const ISO: ISO = 100;
 const SENSOR_MODE: u32 = 1;
 const JPEG_QUALITY: u32 = 85;
-const _EXPOSTURE: u32 = 40000;
+const SHUTTER_SPEED: u32 = 40000;
 const DEFAULT_OUTPUT_DIR: &'static str = "/media/pi/rpi";
 
 /// A simple capture CLI for rapid elegans motion detection (Remi) system
