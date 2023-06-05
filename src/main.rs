@@ -1,3 +1,5 @@
+use image::codecs::png::PngDecoder;
+use image::ImageDecoder;
 use rascam::*;
 use tracing::{error as t_error, info as t_info};
 
@@ -77,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     t_info!("Found {} cameras.", info.cameras.len());
 
     let settings = CameraSettings {
-        encoding: MMAL_ENCODING_RGB24,
+        encoding: MMAL_ENCODING_PNG,
         width: WIDTH, // 96px will not require padding
         height: HEIGHT,
         iso: ISO,
@@ -102,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(&outputdir)?;
     }
 
-    let result = batch_capture(&mut camera, args.nframe, interval, WIDTH, HEIGHT, outputdir).await;
+    let result = batch_capture(&mut camera, args.nframe, interval, outputdir).await;
     match result {
         Ok(_) => t_info!("Finished the capture"),
         Err(err) => {
@@ -170,22 +172,32 @@ async fn batch_capture<P: AsRef<Path> + Clone>(
     camera: &mut SeriousCamera,
     n: usize,
     interval: u64,
-    width: u32,
-    height: u32,
+    // width: u32,
+    // height: u32,
     outputdir: P,
 ) -> Result<(), Box<dyn std::error::Error>> {
     t_info!("Capture start");
     let mut ticker = tokio::time::interval(time::Duration::from_millis(interval));
     for i in 0..n {
         ticker.tick().await;
-        let im: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> = image::RgbImage::from_vec(width, height, capture(camera).await?)
-            .expect("fail to fetch image");
+
+        // png
+        let im = capture(camera).await?;
+
+        let decoder = PngDecoder::new(im.as_slice())?;
+        let (width, height) = decoder.dimensions();
+        let mut buf: Vec<u8> = vec![0; decoder.total_bytes() as usize];
+        decoder.read_image(buf.as_mut_slice())?;
+
+        let im_decoded =
+            image::RgbImage::from_vec(width, height, buf).expect("fail to fetch decoded buf");
         let datetime: DateTime<Local> = SystemTime::now().into();
         let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
         t_info!("{} ({}/{})", filename, i + 1, n);
         let outputdir: &Path = outputdir.as_ref();
 
-        let gray: image::ImageBuffer<image::Luma<u8>, Vec<u8>> = image::imageops::grayscale(&im);
+        let gray: image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
+            image::imageops::grayscale(&im_decoded);
         gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
         // let mut file = File::create(&outputdir.join(&filename)).await?;
         // file.write_all(&im).await?;
