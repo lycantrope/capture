@@ -11,8 +11,8 @@ use futures::stream::StreamExt as _;
 use native_dialog::FileDialog;
 use std::path::Path;
 use std::time::SystemTime;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt as _;
+// use tokio::fs::File;
+// use tokio::io::AsyncWriteExt as _;
 
 // static paramters for remi system
 const WIDTH: u32 = 1024;
@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     t_info!("Found {} cameras.", info.cameras.len());
 
     let settings = CameraSettings {
-        encoding: MMAL_ENCODING_JPEG,
+        encoding: MMAL_ENCODING_RGB24,
         width: WIDTH, // 96px will not require padding
         height: HEIGHT,
         iso: ISO,
@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(&outputdir)?;
     }
 
-    let result = batch_capture(&mut camera, args.nframe, interval, outputdir).await;
+    let result = batch_capture(&mut camera, args.nframe, interval, WIDTH, HEIGHT, outputdir).await;
     match result {
         Ok(_) => t_info!("Finished the capture"),
         Err(err) => {
@@ -170,25 +170,25 @@ async fn batch_capture<P: AsRef<Path> + Clone>(
     camera: &mut SeriousCamera,
     n: usize,
     interval: u64,
+    width: u32,
+    height: u32,
     outputdir: P,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // let mut to_gray = turbojpeg::Transform::default();
-    // to_gray.gray = true;
-
     t_info!("Capture start");
     let mut ticker = tokio::time::interval(time::Duration::from_millis(interval));
     for i in 0..n {
         ticker.tick().await;
-        let im = capture(camera).await?;
+        let im: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> = image::RgbImage::from_vec(width, height, capture(camera).await?)
+            .expect("fail to fetch image");
         let datetime: DateTime<Local> = SystemTime::now().into();
         let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
         t_info!("{} ({}/{})", filename, i + 1, n);
         let outputdir: &Path = outputdir.as_ref();
 
-        // let gray = turbojpeg::transform(&to_gray, &im)?;
-
-        let mut file = File::create(&outputdir.join(&filename)).await?;
-        file.write_all(&im).await?;
+        let gray: image::ImageBuffer<image::Luma<u8>, Vec<u8>> = image::imageops::grayscale(&im);
+        gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
+        // let mut file = File::create(&outputdir.join(&filename)).await?;
+        // file.write_all(&im).await?;
     }
     Ok(())
 }
