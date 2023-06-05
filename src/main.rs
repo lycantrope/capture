@@ -124,7 +124,7 @@ async fn init_camera(
     camera.set_camera_params(info)?;
 
     // critical the encoder must be created before camera formating.
-    // camera.create_encoder()?;
+    camera.create_encoder()?;
 
     camera.set_camera_format(settings)?;
     camera.enable()?;
@@ -132,7 +132,7 @@ async fn init_camera(
     camera.create_preview()?;
     camera.create_pool()?;
 
-    // camera.enable_encoder()?;
+    camera.enable_encoder()?;
     camera.enable_preview()?;
 
     // camera.connect_encoder()?;
