@@ -1,6 +1,3 @@
-[submodule "raspicam"]
-	path = raspicam
-	url = https://github.com/cedricve/raspicam
 [submodule "rascam"]
 	path = rascam
 	url = https://github.com/lycantrope/rascam
