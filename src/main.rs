@@ -1,6 +1,5 @@
 use rascam::*;
 use tracing::{error as t_error, info as t_info};
-use tracing_subscriber;
 
 use std::{thread, time};
 
