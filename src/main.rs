@@ -135,7 +135,7 @@ async fn init_camera(
     camera.enable_encoder()?;
     camera.enable_preview()?;
 
-    // camera.connect_encoder()?;
+    camera.connect_encoder()?;
     camera.connect_preview()?;
 
     // warm up the camera
