@@ -35,11 +35,11 @@ struct Args {
     /// interval of between each frame (sec) (default= 2.0)
     #[arg(short, long, default_value_t = 2.0)]
     interval: f64,
-    // output directory (default = ""). A filedialog will pop up if outputdir was not provided. 
+    // output directory (default = ""). A filedialog will pop up if outputdir was not provided.
     #[arg(short, long, default_value = "")]
     outputdir: String,
     #[arg(short,long, default_value_t = JPEG_QUALITY)]
-    quality:u32,
+    quality: u32,
 }
 
 #[tokio::main]
@@ -51,8 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interval = (args.interval * 1000f64).round() as u64;
 
     let mut outputdir = args.outputdir.to_string();
-    
-    if !Path::new(&outputdir).exists(){
+
+    if !Path::new(&outputdir).exists() {
         let path = FileDialog::new()
             .set_location(DEFAULT_OUTPUT_DIR)
             .show_open_single_dir()
@@ -88,7 +88,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         use_encoder: true,
     };
 
-
     info.cameras.iter().for_each(|cam| t_info!("{}", cam));
     let mut camera = match init_camera(&info.cameras[0], &settings).await {
         Ok(camera) => camera,
@@ -115,9 +114,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
-
-async fn init_camera(info: &CameraInfo, settings: &CameraSettings) -> Result<SeriousCamera, Box<dyn std::error::Error>> {
+async fn init_camera(
+    info: &CameraInfo,
+    settings: &CameraSettings,
+) -> Result<SeriousCamera, Box<dyn std::error::Error>> {
     let mut camera = SeriousCamera::new()?;
     camera.set_camera_num(0)?;
 
@@ -128,7 +128,7 @@ async fn init_camera(info: &CameraInfo, settings: &CameraSettings) -> Result<Ser
     // critical the encoder must be created before camera formating.
     camera.create_encoder()?;
 
-    camera.set_camera_format(&settings)?;
+    camera.set_camera_format(settings)?;
     camera.enable()?;
 
     camera.create_preview()?;
@@ -143,7 +143,14 @@ async fn init_camera(info: &CameraInfo, settings: &CameraSettings) -> Result<Ser
     // warm up the camera
     let sleep_duration = time::Duration::from_millis(2000);
     thread::sleep(sleep_duration);
+
     // warm up
+    capture(&mut camera).await?;
+    camera.set_shutter_speed(SHUTTER_SPEED)?;
+    camera.set_awb_mode(AWBMode::OFF)?;
+    // r_gain and g_gain were taken from live image of Remi system using picamera
+    camera.set_awb_gain(0.28515625, 3.234375)?;
+    thread::sleep(sleep_duration);
     capture(&mut camera).await?;
 
     Ok(camera)
@@ -166,8 +173,8 @@ async fn batch_capture<P: AsRef<Path> + Clone>(
     interval: u64,
     outputdir: P,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut to_gray = turbojpeg::Transform::default();
-    to_gray.gray = true;
+    // let mut to_gray = turbojpeg::Transform::default();
+    // to_gray.gray = true;
 
     t_info!("Capture start");
     let mut ticker = tokio::time::interval(time::Duration::from_millis(interval));
@@ -178,11 +185,11 @@ async fn batch_capture<P: AsRef<Path> + Clone>(
         let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
         t_info!("{} ({}/{})", filename, i + 1, n);
         let outputdir: &Path = outputdir.as_ref();
-        
-        let gray = turbojpeg::transform(&to_gray, &im)?;
-    
+
+        // let gray = turbojpeg::transform(&to_gray, &im)?;
+
         let mut file = File::create(&outputdir.join(&filename)).await?;
-        file.write_all(&gray).await?;
+        file.write_all(&im).await?;
     }
     Ok(())
 }
