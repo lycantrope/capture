@@ -12,7 +12,6 @@ use native_dialog::FileDialog;
 use std::path::Path;
 use std::time::SystemTime;
 
-
 // static paramters for remi system
 const WIDTH: u32 = 1024;
 const HEIGHT: u32 = 768;
@@ -125,7 +124,7 @@ async fn init_camera(
     camera.set_camera_params(info)?;
 
     // critical the encoder must be created before camera formating.
-    camera.create_encoder()?;
+    // camera.create_encoder()?;
 
     camera.set_camera_format(settings)?;
     camera.enable()?;
@@ -133,10 +132,10 @@ async fn init_camera(
     camera.create_preview()?;
     camera.create_pool()?;
 
-    camera.enable_encoder()?;
+    // camera.enable_encoder()?;
     camera.enable_preview()?;
 
-    camera.connect_encoder()?;
+    // camera.connect_encoder()?;
     camera.connect_preview()?;
 
     // warm up the camera
@@ -166,19 +165,19 @@ async fn capture(camera: &mut SeriousCamera) -> Result<Vec<u8>, CameraError> {
 
 async fn batch_capture<P: AsRef<Path> + Clone>(
     camera: &mut SeriousCamera,
-    settings:&CameraSettings,
+    settings: &CameraSettings,
     n: usize,
     interval: u64,
     outputdir: P,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     t_info!("Capture start");
     let width = settings.width;
     let height = settings.height;
     let mut ticker = tokio::time::interval(time::Duration::from_millis(interval));
     for i in 0..n {
         ticker.tick().await;
-        let im = image::RgbImage::from_vec(width, height, capture(camera).await?).expect("fail to capture image");
+        let im = image::RgbImage::from_vec(width, height, capture(camera).await?)
+            .expect("fail to capture image");
 
         let gray_im: image::ImageBuffer<image::Luma<u8>, Vec<u8>> = image::imageops::grayscale(&im);
         let datetime: DateTime<Local> = SystemTime::now().into();
@@ -188,7 +187,7 @@ async fn batch_capture<P: AsRef<Path> + Clone>(
         // let mut file = File::create(&outputdir.join(&filename)).await?;
         // let w = tokio::io::BufWriter::new(file);
         // let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(w, JPEG_QUALITY);
-        // encoder.encode_image(&gray_im)?;        
+        // encoder.encode_image(&gray_im)?;
 
         gray_im.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
     }
