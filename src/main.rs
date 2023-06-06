@@ -182,6 +182,12 @@ async fn batch_capture<P: AsRef<Path>>(
     let mut ticker = tokio::time::interval(time::Duration::from_millis(interval));
     let outputdir: &Path = outputdir.as_ref();
 
+    let format = if settings.encoding == MMAL_ENCODING_PNG {
+        ImageFormat::Png
+    } else {
+        ImageFormat::Jpeg
+    };
+
     for i in 0..n {
         ticker.tick().await;
 
@@ -193,11 +199,6 @@ async fn batch_capture<P: AsRef<Path>>(
         match ImageReader::with_format(Cursor::new(&im), format).decode() {
             Ok(res) => {
                 let gray = res.to_luma8();
-                let format = if settings.encoding == MMAL_ENCODING_PNG {
-                    ImageFormat::Png
-                } else {
-                    ImageFormat::Jpeg
-                };
                 let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
                 t_info!("{} ({}/{})", filename, i + 1, n);
                 gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
