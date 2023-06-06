@@ -182,12 +182,6 @@ async fn batch_capture<P: AsRef<Path>>(
     let mut ticker = tokio::time::interval(time::Duration::from_millis(interval));
     let outputdir: &Path = outputdir.as_ref();
 
-    let (format, file_fmt) = if settings.encoding == MMAL_ENCODING_PNG {
-        (ImageFormat::Png, "{}.png")
-    } else {
-        (ImageFormat::Jpeg, "{}.jpg")
-    };
-
     for i in 0..n {
         ticker.tick().await;
 
@@ -195,26 +189,28 @@ async fn batch_capture<P: AsRef<Path>>(
 
         let datetime: DateTime<Local> = SystemTime::now().into();
 
-        t_info!("{} ({}/{})", filename, i + 1, n);
-
-        // for PNG format
-        // let gray = ImageReader::with_format(Cursor::new(&im), ImageFormat::Png)
-        //     .decode()?
-        //     .to_luma8();
-
-        // gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
-
         // for JPEG format
         match ImageReader::with_format(Cursor::new(&im), format).decode() {
             Ok(res) => {
                 let gray = res.to_luma8();
-                let filename: String = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
+                let format = if settings.encoding == MMAL_ENCODING_PNG {
+                    ImageFormat::Png
+                } else {
+                    ImageFormat::Jpeg
+                };
+                let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
+                t_info!("{} ({}/{})", filename, i + 1, n);
                 gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
             }
             Err(_) => {
-                let filename = format!(file_fmt, datetime.format("%Y%m%d_%H%M%S_%3f"));
+                let filename = if settings.encoding == MMAL_ENCODING_PNG {
+                    format!("{}.png", datetime.format("%Y%m%d_%H%M%S_%3f"))
+                } else {
+                    format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"))
+                };
                 let mut file = File::create(&outputdir.join(&filename)).await?;
                 file.write_all(&im).await?;
+                t_info!("{} ({}/{})", filename, i + 1, n);
             }
         };
     }
