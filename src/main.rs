@@ -1,6 +1,7 @@
-use image::codecs::png::PngDecoder;
-use image::ImageDecoder;
+use image::io::Reader as ImageReader;
+use image::ImageFormat;
 use rascam::*;
+use std::io::Cursor;
 use tracing::{error as t_error, info as t_info};
 
 use std::{thread, time};
@@ -13,8 +14,8 @@ use futures::stream::StreamExt as _;
 use native_dialog::FileDialog;
 use std::path::Path;
 use std::time::SystemTime;
-// use tokio::fs::File;
-// use tokio::io::AsyncWriteExt as _;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt as _;
 
 // static paramters for remi system
 const WIDTH: u32 = 1024;
@@ -79,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     t_info!("Found {} cameras.", info.cameras.len());
 
     let settings = CameraSettings {
-        encoding: MMAL_ENCODING_PNG,
+        encoding: MMAL_ENCODING_JPEG,
         width: WIDTH, // 96px will not require padding
         height: HEIGHT,
         iso: ISO,
@@ -104,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(&outputdir)?;
     }
 
-    let result = batch_capture(&mut camera, args.nframe, interval, outputdir).await;
+    let result = batch_capture(&mut camera, &settings, args.nframe, interval, &outputdir).await;
     match result {
         Ok(_) => t_info!("Finished the capture"),
         Err(err) => {
@@ -168,8 +169,9 @@ async fn capture(camera: &mut SeriousCamera) -> Result<Vec<u8>, CameraError> {
     future.await
 }
 
-async fn batch_capture<P: AsRef<Path> + Clone>(
+async fn batch_capture<P: AsRef<Path>>(
     camera: &mut SeriousCamera,
+    settings: &CameraSettings,
     n: usize,
     interval: u64,
     // width: u32,
@@ -178,29 +180,43 @@ async fn batch_capture<P: AsRef<Path> + Clone>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     t_info!("Capture start");
     let mut ticker = tokio::time::interval(time::Duration::from_millis(interval));
+    let outputdir: &Path = outputdir.as_ref();
+
+    let (format, file_fmt) = if settings.encoding == MMAL_ENCODING_PNG {
+        (ImageFormat::Png, "{}.png")
+    } else {
+        (ImageFormat::Jpeg, "{}.jpg")
+    };
+
     for i in 0..n {
         ticker.tick().await;
 
-        // png
         let im = capture(camera).await?;
 
-        let decoder = PngDecoder::new(im.as_slice())?;
-        let (width, height) = decoder.dimensions();
-        let mut buf: Vec<u8> = vec![0; decoder.total_bytes() as usize];
-        decoder.read_image(buf.as_mut_slice())?;
-
-        let im_decoded =
-            image::RgbImage::from_vec(width, height, buf).expect("fail to fetch decoded buf");
         let datetime: DateTime<Local> = SystemTime::now().into();
-        let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
-        t_info!("{} ({}/{})", filename, i + 1, n);
-        let outputdir: &Path = outputdir.as_ref();
 
-        let gray: image::ImageBuffer<image::Luma<u8>, Vec<u8>> =
-            image::imageops::grayscale(&im_decoded);
-        gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
-        // let mut file = File::create(&outputdir.join(&filename)).await?;
-        // file.write_all(&im).await?;
+        t_info!("{} ({}/{})", filename, i + 1, n);
+
+        // for PNG format
+        // let gray = ImageReader::with_format(Cursor::new(&im), ImageFormat::Png)
+        //     .decode()?
+        //     .to_luma8();
+
+        // gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
+
+        // for JPEG format
+        match ImageReader::with_format(Cursor::new(&im), format).decode() {
+            Ok(res) => {
+                let gray = res.to_luma8();
+                let filename: String = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
+                gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
+            }
+            Err(_) => {
+                let filename = format!(file_fmt, datetime.format("%Y%m%d_%H%M%S_%3f"));
+                let mut file = File::create(&outputdir.join(&filename)).await?;
+                file.write_all(&im).await?;
+            }
+        };
     }
     Ok(())
 }
