@@ -188,7 +188,9 @@ async fn batch_capture<P: AsRef<Path>>(
         ImageFormat::Jpeg
     };
 
-    for i in 0..n {
+    let _ = capture(camera).await?;
+
+    for i in 1..=n {
         ticker.tick().await;
 
         let im = capture(camera).await?;
@@ -200,7 +202,7 @@ async fn batch_capture<P: AsRef<Path>>(
             Ok(res) => {
                 let gray = res.to_luma8();
                 let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
-                t_info!("{} ({}/{})", filename, i + 1, n);
+                t_info!("{} ({}/{})", filename, i, n);
                 gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
             }
             Err(_) => {
@@ -211,7 +213,7 @@ async fn batch_capture<P: AsRef<Path>>(
                 };
                 let mut file = File::create(&outputdir.join(&filename)).await?;
                 file.write_all(&im).await?;
-                t_info!("{} ({}/{})", filename, i + 1, n);
+                t_info!("{} ({}/{})", filename, i, n);
             }
         };
     }
