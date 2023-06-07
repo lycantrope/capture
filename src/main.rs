@@ -201,21 +201,22 @@ async fn batch_capture<P: AsRef<Path>>(
                 let gray = res.to_luma8();
                 let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
                 // let mut file = File::create(&outputdir.join(&filename)).await?;
-                let file = std::fs::File::create(&outputdir.join(&filename))?;
-                let mut encoder = JpegEncoder::new_with_quality(file, JPEG_QUALITY as u8);
-                encoder
-                    .encode(
-                        gray.as_raw().as_slice(),
-                        gray.width(),
-                        gray.height(),
-                        image::ColorType::L8,
-                    )
-                    .or_else(|_| {
-                        gray.save_with_format(&outputdir.join(&filename), ImageFormat::Jpeg)
-                    })?;
+                // let file = std::fs::File::create(&outputdir.join(&filename))?;
+                // let mut encoder = JpegEncoder::new_with_quality(file, JPEG_QUALITY as u8);
+                // // encoder
+                //     .encode(
+                //         gray.as_raw().as_slice(),
+                //         gray.width(),
+                //         gray.height(),
+                //         image::ColorType::L8,
+                //     )
+                //     .or_else(|_| {
+                //         gray.save_with_format(&outputdir.join(&filename), ImageFormat::Jpeg)
+                //     })?;
+                gray.save_with_format(&outputdir.join(&filename), ImageFormat::Jpeg)?;
                 t_info!("{} ({}/{})", filename, i, n);
             }
-            Err(_) => {
+            Err(e) => {
                 let filename = if settings.encoding == MMAL_ENCODING_PNG {
                     format!("{}.png", datetime.format("%Y%m%d_%H%M%S_%3f"))
                 } else {
@@ -223,6 +224,7 @@ async fn batch_capture<P: AsRef<Path>>(
                 };
                 let mut file = File::create(&outputdir.join(&filename)).await?;
                 file.write_all(&im).await?;
+                t_error!("{}", e);
                 t_info!("{} ({}/{})", filename, i, n);
             }
         };
