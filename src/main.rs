@@ -1,3 +1,4 @@
+use image::codecs::jpeg::JpegEncoder;
 use image::io::Reader as ImageReader;
 use image::ImageFormat;
 use rascam::*;
@@ -80,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     t_info!("Found {} cameras.", info.cameras.len());
 
     let settings = CameraSettings {
-        encoding: MMAL_ENCODING_JPEG,
+        encoding: MMAL_ENCODING_PNG,
         width: WIDTH, // 96px will not require padding
         height: HEIGHT,
         iso: ISO,
@@ -187,9 +188,7 @@ async fn batch_capture<P: AsRef<Path>>(
     } else {
         ImageFormat::Jpeg
     };
-
     let _ = capture(camera).await?;
-
     for i in 1..=n {
         ticker.tick().await;
 
@@ -197,13 +196,24 @@ async fn batch_capture<P: AsRef<Path>>(
 
         let datetime: DateTime<Local> = SystemTime::now().into();
 
-        // for JPEG format
         match ImageReader::with_format(Cursor::new(&im), format).decode() {
             Ok(res) => {
                 let gray = res.to_luma8();
                 let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
+                // let mut file = File::create(&outputdir.join(&filename)).await?;
+                let file = std::fs::File::create(&outputdir.join(&filename))?;
+                let mut encoder = JpegEncoder::new_with_quality(file, JPEG_QUALITY as u8);
+                encoder
+                    .encode(
+                        gray.as_raw().as_slice(),
+                        gray.width(),
+                        gray.height(),
+                        image::ColorType::L8,
+                    )
+                    .or_else(|_| {
+                        gray.save_with_format(&outputdir.join(&filename), ImageFormat::Jpeg)
+                    })?;
                 t_info!("{} ({}/{})", filename, i, n);
-                gray.save_with_format(&outputdir.join(&filename), image::ImageFormat::Jpeg)?;
             }
             Err(_) => {
                 let filename = if settings.encoding == MMAL_ENCODING_PNG {
