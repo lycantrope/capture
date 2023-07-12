@@ -1,11 +1,10 @@
-use image::codecs::jpeg::JpegEncoder;
 use image::io::Reader as ImageReader;
 use image::ImageFormat;
 use rascam::*;
 use std::io::Cursor;
 use tracing::{error as t_error, info as t_info};
 
-use std::{thread, time};
+use std::time;
 
 use chrono::offset::Local;
 use chrono::DateTime;
@@ -92,13 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     info.cameras.iter().for_each(|cam| t_info!("{}", cam));
-    let mut camera = match init_camera(&info.cameras[0], &settings).await {
-        Ok(camera) => camera,
-        Err(e) => {
-            t_error!("Fail to init camera");
-            return Err(e);
-        }
-    };
+    let mut camera = init_camera(&info.cameras[0], &settings)?;
 
     let datetime: DateTime<Local> = SystemTime::now().into();
     outputdir.push_str(&format!("/{}", datetime.format("%Y%m%d_%H%M%S")));
@@ -106,18 +99,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(&outputdir)?;
     }
 
-    let result = batch_capture(&mut camera, &settings, args.nframe, interval, &outputdir).await;
-    match result {
-        Ok(_) => t_info!("Finished the capture"),
-        Err(err) => {
-            t_error!("error: {}", err);
-            std::process::exit(1);
-        }
-    };
-    Ok(())
+    batch_capture(&mut camera, &settings, args.nframe, interval, &outputdir).await
 }
 
-async fn init_camera(
+fn init_camera(
     info: &CameraInfo,
     settings: &CameraSettings,
 ) -> Result<SeriousCamera, Box<dyn std::error::Error>> {
@@ -128,7 +113,7 @@ async fn init_camera(
 
     camera.set_camera_params(info)?;
 
-    // critical the encoder must be created before camera formating.
+    // [Critical] the encoder must be created before camera formating.
     camera.create_encoder()?;
 
     camera.set_camera_format(settings)?;
@@ -143,23 +128,15 @@ async fn init_camera(
     camera.connect_encoder()?;
     camera.connect_preview()?;
 
-    // warm up the camera
-    let sleep_duration = time::Duration::from_millis(2000);
-    thread::sleep(sleep_duration);
-
-    // warm up
-    capture(&mut camera).await?;
     camera.set_shutter_speed(SHUTTER_SPEED)?;
     camera.set_awb_mode(AWBMode::OFF)?;
     // r_gain and g_gain were taken from live image of Remi system using picamera
     camera.set_awb_gain(0.28515625, 3.234375)?;
-    thread::sleep(sleep_duration);
-    capture(&mut camera).await?;
 
     Ok(camera)
 }
 
-async fn capture(camera: &mut SeriousCamera) -> Result<Vec<u8>, CameraError> {
+async fn async_capture(camera: &mut SeriousCamera) -> Result<Vec<u8>, CameraError> {
     let receiver = camera.take_async()?;
     let future = receiver
         .fold(Vec::new(), |mut acc, buf| async move {
@@ -188,11 +165,11 @@ async fn batch_capture<P: AsRef<Path>>(
     } else {
         ImageFormat::Jpeg
     };
-    let _ = capture(camera).await?;
+
     for i in 1..=n {
         ticker.tick().await;
 
-        let im = capture(camera).await?;
+        let mut im = async_capture(camera).await?;
 
         let datetime: DateTime<Local> = SystemTime::now().into();
 
@@ -200,20 +177,13 @@ async fn batch_capture<P: AsRef<Path>>(
             Ok(res) => {
                 let gray = res.to_luma8();
                 let filename = format!("{}.jpg", datetime.format("%Y%m%d_%H%M%S_%3f"));
-                // let mut file = File::create(&outputdir.join(&filename)).await?;
-                // let file = std::fs::File::create(&outputdir.join(&filename))?;
-                // let mut encoder = JpegEncoder::new_with_quality(file, JPEG_QUALITY as u8);
-                // // encoder
-                //     .encode(
-                //         gray.as_raw().as_slice(),
-                //         gray.width(),
-                //         gray.height(),
-                //         image::ColorType::L8,
-                //     )
-                //     .or_else(|_| {
-                //         gray.save_with_format(&outputdir.join(&filename), ImageFormat::Jpeg)
-                //     })?;
-                gray.save_with_format(&outputdir.join(&filename), ImageFormat::Jpeg)?;
+
+                im.clear();
+                let mut buf = Cursor::new(&mut im);
+                gray.write_to(&mut buf, ImageFormat::Jpeg)?;
+                // gray.save_with_format(&outputdir.join(&filename), ImageFormat::Jpeg)?;
+                let mut file = File::create(&outputdir.join(&filename)).await?;
+                file.write_all(&im).await?;
                 t_info!("{} ({}/{})", filename, i, n);
             }
             Err(e) => {
